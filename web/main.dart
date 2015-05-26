@@ -49,16 +49,16 @@ class Body {
     _acceleration *= 0.0;
   }
   void collide(Body b) {
-    Vector2 v1 = momentum - velocity * b.mass + b.momentum*2.0;
-    Vector2 v2 = b.momentum - b.velocity * mass + momentum*2.0;
-    double m = mass+b.mass;
-    velocity = v1/m;
-    b.velocity = v2/m;
+    Vector2 v1 = momentum - velocity * b.mass + b.momentum * 2.0;
+    Vector2 v2 = b.momentum - b.velocity * mass + momentum * 2.0;
+    double m = mass + b.mass;
+    velocity = v1 / m;
+    b.velocity = v2 / m;
   }
 }
 class Boid {
   static const RADIUS = 3.0;
-  static const DENSITY = 1.0e-1;
+  static const DENSITY = 4.0e-1;
   Body _body;
 
   get body => _body;
@@ -73,17 +73,25 @@ class Boid {
 }
 
 class Flock {
-  static const UNIT_SIZE = 1000.0;
+  static const DAMPEN = 1.0 - 1e-2;
   static const COHESION_ACCELERATION = 75.0;
   static const ATTRACTION_ACCELERATION = 145.0;
   static const ALIGNMENT_ACCELERATION = 50.0;
   static const MINIMUM_DISTANCE = 15.0;
   static const MAXIMUM_VELOCITY = 600.0;
   static const AVOIDANCE_ACCELERATION = 200.0;
-
+  static const FLOCK_AVOIDANCE_ACCELERATION = 120.0;
   double _mass;
   Vector2 _target = null;
   set target(Vector2 target) => _target = target;
+
+  List<Flock> _avoidFlocks;
+
+  void avoid(Flock flock) {
+    if (!_avoidFlocks.contains(flock)) {
+      _avoidFlocks.add(flock);
+    }
+  }
 
   List<Boid> _boids;
 
@@ -91,32 +99,46 @@ class Flock {
 
   Flock(int count) {
     _boids = new List<Boid>(count);
+    _avoidFlocks = new List<Flock>();
 
     Random rng = new Random();
     Vector2 c = new Vector2(0.5, 0.5);
     _mass = 0.0;
     for (int i = 0; i < _boids.length; i++) {
       _boids[i] = new Boid(
-          (new Vector2(rng.nextDouble(), rng.nextDouble()) - c) * UNIT_SIZE,
-          new Vector2.zero());
+          (new Vector2(rng.nextDouble(), rng.nextDouble()) - c) *
+              (MINIMUM_DISTANCE * _boids.length), new Vector2.zero());
+
       _mass += _boids[i].body.mass;
     }
+    _computeCenter();
+    _computeMomentum();
   }
 
-  void advance(double t) {
-    Random rng = new Random();
-    Vector2 center = new Vector2(0.0, 0.0);
+  Vector2 _center;
+  get center => _center;
+  
+  Vector2 _momentum;
+  get momentum => _momentum;
+  
+  void _computeCenter() {
+    _center = new Vector2.zero();
     /* Get the center. */
     for (Boid boid in _boids) {
-      center += boid.body.position;
+      _center += boid.body.position;
     }
-    center /= _boids.length - 1.0;
-
+    _center /= _boids.length - 1.0;
+    
+  }
+  void _computeMomentum() {
     /* Compute the momentum of the flock. */
-    Vector2 momentum = new Vector2.zero();
-    for (Boid boid in _boids) {
-      momentum += boid.body.momentum;
-    }
+         _momentum = new Vector2.zero();
+        for (Boid boid in _boids) {
+          _momentum += boid.body.momentum;
+        }
+  }
+  void advance(double t) {
+    
 
     /* Move toward the center of the flock. */
     Vector2 cohere(Boid b) {
@@ -150,6 +172,19 @@ class Flock {
         a *= AVOIDANCE_ACCELERATION;
       }
 
+      return a;
+    }
+    
+    Vector2 avoid(Boid boid) {
+      Vector2 a = new Vector2.zero();
+      for(Flock flock in _avoidFlocks) {
+       Vector2 c = boid.body.position - flock.center;
+       c.normalize();
+       a += c * flock._boids.length.toDouble();
+      }
+      a.normalize();
+      a *= FLOCK_AVOIDANCE_ACCELERATION;
+      
       return a;
     }
 
@@ -186,14 +221,18 @@ class Flock {
       Vector2 cohesion = cohere(boid);
       Vector2 sep = separate(boid);
       Vector2 alignment = align(boid);
+      Vector2 avoidance = avoid(boid);
+      boid.body.acceleration = cohesion + sep + alignment + attraction + avoidance;
+      
+    }
 
-      boid.body.acceleration = (cohesion + sep + alignment + attraction);
+    for (Boid boid in _boids) {
+      boid.body.velocity *= DAMPEN;
       boid.body.clampVelocity(MAXIMUM_VELOCITY);
+      boid.body.advance(t);
     }
-
-    for (Boid b in _boids) {
-      b.body.advance(t);
-    }
+    _computeCenter();
+    _computeMomentum();
   }
 }
 
@@ -233,17 +272,7 @@ class Player {
     _flail.momentum *= DAMPENING;
 
     if (_target != null) {
-      /*Vector2 d = _target - body.position;
-      double dist = d.length;
-      if (dist > MINIMUM_DISTANCE) {
-        //d /= sqrt(dist);
 
-        _body.acceleration = d * ATTRACTION_ACCELERATION;
-      } else {
-        d = -_body.velocity;
-        d.normalize();
-        _body.acceleration = d * ATTRACTION_ACCELERATION;
-      }*/
       _body.position = _target;
       _body.velocity *= 0.0;
     }
@@ -253,7 +282,6 @@ class Player {
       Vector2 d = -displacement;
       d.normalize();
       d *= (displacement.length - STRING_LENGTH) * HOOKE_COEFFICIENT;
-      //d.normalize();
       _flail.acceleration = d * FLAIL_ACCELERATION;
     }
     _body.clampVelocity(MAXIMUM_VELOCITY);
@@ -264,35 +292,56 @@ class Player {
   }
 }
 class Renderer {
+  static const FLOCK_COUNT = 3;
+  static const BOID_COUNT = 40;
+  static const INITIAL_UNITSIZE = 800.0;
+  static const WHEEL_SCALE = 1.0 / 200.0;
+  static const WHEEL_INCREMENT = 1.1;
   static final SCREEN_CENTER = new Vector2(10.0, 10.0);
   static const TICS_PER_SECOND = 35;
+
+  double _unitsize;
 
   CanvasElement _canvas;
   CanvasRenderingContext2D _context;
 
-  Flock _flock;
+  List<Flock> _flocks;
   Player _player;
   Vector2 _dragTarget;
 
   Vector2 canvasToWorld(Point p) {
     Vector2 x = new Vector2(p.x / _canvas.width, p.y / _canvas.height);
     x -= new Vector2(0.5, 0.5);
-    x *= Flock.UNIT_SIZE;
+    x *= _unitsize;
     x += SCREEN_CENTER;
     return x;
   }
   Renderer(CanvasElement canvas) {
-    const BOID_COUNT = 40;
+    _unitsize = INITIAL_UNITSIZE;
 
     _player = new Player(new Vector2(0.0, 0.0));
-    _flock = new Flock(BOID_COUNT);
+    _flocks = new List<Flock>(FLOCK_COUNT);
+    for (int i = 0; i < FLOCK_COUNT; i++) {
+      _flocks[i] = new Flock(BOID_COUNT);
+    }
+    
+    for(Flock flock in _flocks) {
+      for(Flock other in _flocks){
+        if(other != flock) {
+        flock.avoid(other);
+        }
+      }
+    }
+    
     _canvas = canvas;
     _context = _canvas.context2D;
 
     _dragTarget = null;
     _canvas.onMouseDown.listen((MouseEvent e) {
       _dragTarget = canvasToWorld(e.client);
-      _flock.target = _player.body.position;
+      for (Flock flock in _flocks) {
+        flock.target = _player.body.position;
+      }
     });
     _canvas.onMouseMove.listen((MouseEvent e) {
       if (_dragTarget != null) {
@@ -306,6 +355,9 @@ class Renderer {
     _canvas.onMouseLeave.listen((MouseEvent e) {
       _dragTarget = null;
     });
+    _canvas.onMouseWheel.listen((WheelEvent e) {
+      _unitsize *= pow(WHEEL_INCREMENT, e.deltaY * WHEEL_SCALE);
+    });
   }
 
   void _render() {
@@ -314,15 +366,25 @@ class Renderer {
     _context.clearRect(0, 0, 1, 1);
 
     _context.translate(0.5, 0.5);
-    _context.scale(1.0 / Flock.UNIT_SIZE, 1.0 / Flock.UNIT_SIZE);
+    _context.scale(1.0 / _unitsize, 1.0 / _unitsize);
     _context.translate(-SCREEN_CENTER.x, -SCREEN_CENTER.y);
 
-    _context.lineWidth = Flock.UNIT_SIZE / _canvas.width;
-    for (Boid boid in _flock.boids) {
-      _context.beginPath();
-      _context.arc(
-          boid.body.position.x, boid.body.position.y, Boid.RADIUS, 0, 2 * PI);
-      _context.stroke();
+    _context.lineWidth = _unitsize / _canvas.width;
+    for (Flock flock in _flocks) {
+      for (Boid boid in flock.boids) {
+        _context.beginPath();
+        _context.arc(
+            boid.body.position.x, boid.body.position.y, Boid.RADIUS, 0, 2 * PI);
+        _context.stroke();
+        _context.beginPath();
+        Vector2 x = boid.body.position;
+        Vector2 p = new Vector2.copy(boid.body.momentum).normalized();
+        p *= Boid.RADIUS;
+        Vector2 y = x+p;
+        _context.moveTo(x.x,x.y);
+        _context.lineTo(y.x, y.y);
+        _context.stroke();
+      }
     }
 
     /* Draw the player. */
@@ -350,19 +412,23 @@ class Renderer {
     _render();
     if (_dragTarget != null) {
       _player.moveToward(_dragTarget);
-      _flock.target = _player.body._position;
+      for (Flock flock in _flocks) {
+        flock.target = _player.body._position;
+      }
     }
 
     /*_flock.advance(1.0);
     _player.advance(1.0);*/
     /* Bounce the boids away from the flail. */
-    for(Boid boid in _flock.boids) {
-      Vector2 d = boid.body.position - _player.flail.position;
-      if(d.length < Boid.RADIUS + Player.FLAIL_RADIUS) {
-        boid.body.collide(_player.flail);
+    for (Flock flock in _flocks) {
+      for (Boid boid in flock.boids) {
+        Vector2 d = boid.body.position - _player.flail.position;
+        if (d.length < Boid.RADIUS + Player.FLAIL_RADIUS) {
+          boid.body.collide(_player.flail);
+        }
       }
+      flock.advance(1.0 / TICS_PER_SECOND);
     }
-    _flock.advance(1.0 / TICS_PER_SECOND);
     _player.advance(1.0 / TICS_PER_SECOND);
   }
   Timer startTimer() {

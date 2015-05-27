@@ -6,6 +6,10 @@ import 'dart:html';
 import 'dart:async';
 import 'package:vector_math/vector_math.dart';
 
+double sinh(double x) {
+  double y = exp(x);
+  return 0.5 * y - 0.5 / y;
+}
 /**
  * Randomly generate a normally distributed number.
  * 
@@ -41,7 +45,7 @@ class Body {
   set position(Vector2 x) => _position = new Vector2.copy(x);
   set momentum(Vector2 p) => _momentum = new Vector2.copy(p);
   set velocity(Vector2 v) => _momentum = v * _mass;
-set mass(double m) => _mass = m;
+  set mass(double m) => _mass = m;
 
   set acceleration(Vector2 a) => _acceleration = new Vector2.copy(a);
   set force(Vector2 f) => _acceleration += f / _mass;
@@ -98,13 +102,12 @@ class Boid {
   double _radius;
   get body => _body;
   set body(Body body) => _body = body;
-  
 
   get radius => _radius;
-set radius(double r) {
-  _radius = r;
-  _body.mass = r*r*PI*DENSITY;
-}
+  set radius(double r) {
+    _radius = r;
+    _body.mass = r * r * PI * DENSITY;
+  }
   Boid(Vector2 x, Vector2 p, double radius) {
     _radius = radius;
     _body = new Body(x, p, radius * radius * PI * DENSITY);
@@ -116,12 +119,12 @@ set radius(double r) {
 
 class Flock {
   static const DAMPENING = 0.3;
-  static const ALIGNMENT_ACCELERATION =12.0;
+  static const ALIGNMENT_ACCELERATION = 12.0;
   static const COHESION_ACCELERATION = 24.0;
   static const ATTRACTION_ACCELERATION = 16.0;
   static const AVOIDANCE_ACCELERATION = 60.0;
   static const FLOCK_AVOIDANCE_ACCELERATION = 15.0;
-  
+
   static const MINIMUM_DISTANCE = 50.0;
   static const MAXIMUM_VELOCITY = 2000.0;
   double _mass;
@@ -157,7 +160,7 @@ class Flock {
         radius = gaussianNoise(rng, Boid.RADIUS_MEAN, Boid.RADIUS_STD);
       } while (radius <= Boid.RADIUS_MINIMUM);
 
-      _boids.add( new Boid(
+      _boids.add(new Boid(
           (new Vector2(rng.nextDouble(), rng.nextDouble()) - c) *
               (MINIMUM_DISTANCE * _boids.length), new Vector2.zero(), radius));
 
@@ -195,7 +198,7 @@ class Flock {
     }
   }
   void advance(double t) {
-     /* Move toward the center of the flock. */
+    /* Move toward the center of the flock. */
     Vector2 cohere(Boid b) {
       /* The center of the rest of the flock. */
       Vector2 a = center - b.body.position * (1.0 / _mass);
@@ -276,13 +279,13 @@ class Flock {
       attraction *= ATTRACTION_ACCELERATION;
 
       boid.body.acceleration =
-          (cohesion + sep + alignment + attraction + avoidance) * (1.0/t);
+          (cohesion + sep + alignment + attraction + avoidance) * (1.0 / t);
     }
 
     double dampening = pow(DAMPENING, t);
     for (Boid boid in _boids) {
       boid.body.momentum *= dampening;
-      boid.body.clampVelocity(MAXIMUM_VELOCITY);
+      //boid.body.clampVelocity(MAXIMUM_VELOCITY);
       boid.body.advance(t);
     }
     _computeCenter();
@@ -295,11 +298,13 @@ class Player {
   static const DENSITY = 1.0;
   static const RADIUS = 10.0;
   static const FLAIL_DENSITY = 4.0;
-  static const FLAIL_RADIUS = 24.0;
+  static const FLAIL_RADIUS = 241.0;
   static const MAXIMUM_VELOCITY = 6500.0;
   static const MAXIMUM_FLAIL_VELOCITY = 1500.0;
-  static const STRING_LENGTH = 70.0;
-  static const HOOKE_COEFFICIENT = 4.7;
+  static const SLACK_LENGTH = 70.0;
+  static const HOOKE_COEFFICIENT = 2.7;
+  static const HOOKE_LENGTH = 400.0;
+  static const HOOKE_LIMIT = 1000.0;
   static const ATTRACTION_ACCELERATION = 2600.0;
   static const MINIMUM_DISTANCE = 50.0;
   static const FLAIL_ACCELERATION = 0.1;
@@ -322,12 +327,11 @@ class Player {
   }
 
   void advance(double t) {
-
-    double dampening = pow(DAMPENING,t);
+    double dampening = pow(DAMPENING, t);
 
     _body.momentum *= dampening;
     _flail.momentum *= dampening;
-    
+
     const EPSILON = 1e-2;
 
     if (_target != null) {
@@ -340,33 +344,41 @@ class Player {
 
     }
 
+    double strainCurve(double x) {
+      /* The derivative is only 1.5431 = cosh(1) when x==HOOKE_LENGTH */
+      return sinh(x / HOOKE_LENGTH) * HOOKE_LENGTH;
+    }
     Vector2 displacement = _flail.position - _body.position;
-    if (displacement.length > STRING_LENGTH) {
+    if (displacement.length > SLACK_LENGTH) {
       Vector2 d = -displacement;
       d.normalize();
-      d *= (displacement.length - STRING_LENGTH) * HOOKE_COEFFICIENT;
-      _flail.acceleration = d * (FLAIL_ACCELERATION/t);
+      double elongation = displacement.length - SLACK_LENGTH;
+
+      if(elongation > HOOKE_LIMIT) {
+        elongation = HOOKE_LIMIT;
+      }
+      d *= strainCurve(elongation) * HOOKE_COEFFICIENT;
+
+      _flail.acceleration = d * (FLAIL_ACCELERATION / t);
     }
-    _body.clampVelocity(MAXIMUM_VELOCITY);
-    _flail.clampVelocity(MAXIMUM_FLAIL_VELOCITY);
+    //_body.clampVelocity(MAXIMUM_VELOCITY);
+    //_flail.clampVelocity(MAXIMUM_FLAIL_VELOCITY);
 
     _flail.advance(t);
     _body.advance(t);
-
-
   }
 }
 class Renderer {
-  static const DAMAGE_FACTOR = 1.0-0.3;
+  static const DAMAGE_FACTOR = 1.0 - 0.3;
   static const MOVE_MOUSE_BUTTON = 0;
   static const PAN_MOUSE_BUTTON = 2;
-  static const FLOCK_COUNT = 4;
+  static const FLOCK_COUNT = 7;
   static const BOID_COUNT = 40;
   static const INITIAL_UNITSIZE = 800.0;
   static const WHEEL_SCALE = 1.0 / 200.0;
   static const WHEEL_INCREMENT = 1.1;
 
-  static const TICS_PER_SECOND = 24;
+  static const TICS_PER_SECOND = 48;
   Vector2 _screenCenter = new Vector2(0.0, 0.0);
   double _unitsize;
 
@@ -460,6 +472,18 @@ class Renderer {
     _canvas.onMouseWheel.listen((WheelEvent e) {
       _unitsize *= pow(WHEEL_INCREMENT, e.deltaY * WHEEL_SCALE);
     });
+    window.onKeyDown.listen((KeyboardEvent e) {
+      double val = null;
+      if(e.keyCode == 38) {
+        val = 100.0;        
+      } else if (e.keyCode == 40){
+        val = -100.0;
+      }
+      if(val != null){
+        _unitsize *= pow(WHEEL_INCREMENT, val * WHEEL_SCALE);
+        e.preventDefault();
+      }
+    });
   }
 
   void _render() {
@@ -521,20 +545,18 @@ class Renderer {
       }
     }
 
-    
     /* Bounce the boids away from the flail. */
     for (Flock flock in _flocks) {
       /*for (Boid boid in flock.boids)*/
-      for(int i=0;i<flock.boids.length;i++)
-      {
+      for (int i = 0; i < flock.boids.length; i++) {
         Boid boid = flock.boids[i];
         Vector2 d = boid.body.position - _player.flail.position;
         if (d.length < boid.radius + Player.FLAIL_RADIUS) {
           boid.body.collide(_player.flail);
-          boid.radius *= DAMAGE_FACTOR;
-          if(boid.radius < Boid.RADIUS_MINIMUM) {
-            flock.boids.remove(boid);
-          }
+          /*boid.radius *= DAMAGE_FACTOR;
+          if (boid.radius < Boid.RADIUS_MINIMUM) {
+            flock.boids.removeAt(i);
+          }*/
         }
       }
       flock.advance(1.0 / TICS_PER_SECOND);

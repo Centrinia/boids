@@ -97,7 +97,7 @@ class Boid {
   static const RADIUS_MINIMUM = 0.25;
   static const RADIUS_STD = 2.0;
   static const RADIUS_MEAN = 5.0;
-  static const DENSITY = 4.0e-1;
+  static const DENSITY = 2.0;
   Body _body;
   double _radius;
   get body => _body;
@@ -126,7 +126,7 @@ class Flock {
   static const FLOCK_AVOIDANCE_ACCELERATION = 15.0;
 
   static const MINIMUM_DISTANCE = 50.0;
-  static const MAXIMUM_VELOCITY = 2000.0;
+
   double _mass;
   Vector2 _target = null;
   set target(Vector2 target) => _target = target;
@@ -297,12 +297,10 @@ class Player {
   static const DAMPENING = 0.3;
   static const DENSITY = 1.0;
   static const RADIUS = 10.0;
-  static const FLAIL_DENSITY = 4.0;
-  static const FLAIL_RADIUS = 241.0;
-  static const MAXIMUM_VELOCITY = 6500.0;
-  static const MAXIMUM_FLAIL_VELOCITY = 1500.0;
+  static const FLAIL_DENSITY = 50;
+  static const FLAIL_RADIUS = 50.0;
   static const SLACK_LENGTH = 70.0;
-  static const HOOKE_COEFFICIENT = 2.7;
+  static const HOOKE_COEFFICIENT = 1.7;
   static const HOOKE_LENGTH = 400.0;
   static const HOOKE_LIMIT = 1000.0;
   static const ATTRACTION_ACCELERATION = 2600.0;
@@ -354,7 +352,7 @@ class Player {
       d.normalize();
       double elongation = displacement.length - SLACK_LENGTH;
 
-      if(elongation > HOOKE_LIMIT) {
+      if (elongation > HOOKE_LIMIT) {
         elongation = HOOKE_LIMIT;
       }
       d *= strainCurve(elongation) * HOOKE_COEFFICIENT;
@@ -474,12 +472,12 @@ class Renderer {
     });
     window.onKeyDown.listen((KeyboardEvent e) {
       double val = null;
-      if(e.keyCode == 38) {
-        val = 100.0;        
-      } else if (e.keyCode == 40){
+      if (e.keyCode == 38) {
+        val = 100.0;
+      } else if (e.keyCode == 40) {
         val = -100.0;
       }
-      if(val != null){
+      if (val != null) {
         _unitsize *= pow(WHEEL_INCREMENT, val * WHEEL_SCALE);
         e.preventDefault();
       }
@@ -553,6 +551,7 @@ class Renderer {
         Vector2 d = boid.body.position - _player.flail.position;
         if (d.length < boid.radius + Player.FLAIL_RADIUS) {
           boid.body.collide(_player.flail);
+
           /*boid.radius *= DAMAGE_FACTOR;
           if (boid.radius < Boid.RADIUS_MINIMUM) {
             flock.boids.removeAt(i);
